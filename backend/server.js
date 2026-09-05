@@ -4,6 +4,7 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const cors = require("cors");
 const { connectDb, isDbConnected } = require("./db");
+const authRoutes = require("./routes/auth");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -22,6 +23,8 @@ app.get("/api/health", (req, res) => {
     database: isDbConnected() ? "connected" : "disconnected",
   });
 });
+
+app.use("/api/auth", authRoutes);
 
 async function start() {
   try {
