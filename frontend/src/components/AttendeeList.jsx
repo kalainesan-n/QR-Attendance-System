@@ -38,11 +38,17 @@ export default function AttendeeList({ event, onClose }) {
 
   // Socket.io: join the event room and listen for live updates
   useEffect(() => {
+    if (!SOCKET_URL) return;
+
     const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
 
     socket.on("connect", () => {
       // Join the event-specific room so we only get updates for THIS event
       socket.emit("join:event", event._id);
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("Socket connection error:", err.message);
     });
 
     socket.on("attendance:new", ({ attendance }) => {
