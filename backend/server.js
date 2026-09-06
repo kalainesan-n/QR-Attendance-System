@@ -12,14 +12,47 @@ const attendanceRoutes = require("./routes/attendance");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
 
-app.use(
-  cors({
-    origin: clientUrl,
-    credentials: true,
-  })
-);
+// Parse configured CLIENT_URL (supports comma-separated URLs, trailing slashes, and Vercel domains)
+const configuredOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
+  .split(",")
+  .map((o) => o.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
+function isAllowedOrigin(origin) {
+  // Allow requests with no origin (like mobile apps, curl, or server-to-server)
+  if (!origin) return true;
+
+  const normalized = origin.replace(/\/+$/, "");
+  if (configuredOrigins.includes(normalized) || configuredOrigins.includes("*")) {
+    return true;
+  }
+
+  // Automatically allow any Vercel deployment (*.vercel.app)
+  try {
+    const hostname = new URL(origin).hostname;
+    if (hostname.endsWith(".vercel.app")) {
+      return true;
+    }
+  } catch {
+    // ignore URL parse errors
+  }
+
+  return false;
+}
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS blocked for origin: ${origin}`));
+    }
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
@@ -35,13 +68,18 @@ app.use("/api/events", eventRoutes);
 app.use("/api/attendance", attendanceRoutes);
 
 // ─── HTTP + Socket.io setup ──────────────────────────────────────────────────
-// We create a plain HTTP server and wrap it with Socket.io so both REST and
-// WebSocket connections share the same port.
+// Wrap Express app with HTTP server so REST and WebSockets share the same port
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: clientUrl,
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Socket.io CORS blocked for origin: ${origin}`));
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -51,7 +89,7 @@ const io = new Server(server, {
 module.exports.io = io;
 
 io.on("connection", (socket) => {
-  // Organizer joins a room named "event:<eventId>" to receive live updates
+  // Organizer joins room "event:<eventId>" to receive live updates
   socket.on("join:event", (eventId) => {
     socket.join(`event:${eventId}`);
   });

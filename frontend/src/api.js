@@ -1,11 +1,13 @@
 import axios from "axios";
 
 // Base URL:
+// In production (Vercel): uses VITE_API_URL pointing to the Render backend service.
 // In development: defaults to empty string so requests route through Vite's proxy.
-// This allows both localhost and LAN devices (e.g. mobile phones) to seamlessly reach the backend.
-// In production: set VITE_API_URL to your deployed backend URL.
+const rawApiUrl = import.meta.env.VITE_API_URL || "";
+const baseURL = rawApiUrl ? rawApiUrl.replace(/\/+$/, "") : "";
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "",
+  baseURL,
 });
 
 // Automatically attach the JWT token from localStorage to every request
