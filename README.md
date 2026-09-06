@@ -1,335 +1,197 @@
 # QR-Based Geo-Tagged Attendance Management System
 
-A full-stack web application designed for campus clubs, seminars, and events to conduct fraud-resistant, location-validated attendance using dynamic QR code generation, browser geolocation, Haversine spherical distance calculation, and real-time live updates via WebSockets (Socket.io).
+A full-stack web app that verifies attendance using QR codes and GPS geofencing, instead of a plain sign-in sheet or a roll call. Built for the NSCC technical club recruitment task (Task 2). I put together the backend, database, frontend, and deployment over about three days of pretty heads-down work.
 
----
+## Why this exists
 
-## 📌 Project Overview
+Roll calls and paper sign-in sheets don't actually prove someone was at the venue — it's trivial to sign in for a friend who isn't there. This project adds a second layer of verification on top of the QR code: it checks that the attendee's device is physically within a set radius of the event location before marking them present. If the QR is valid but the GPS distance is too far, the check-in gets rejected.
 
-Traditional attendance methods (roll calls, paper sign-in sheets, static links) are prone to proxy attendance, buddy punching, and record-keeping errors. This system solves that problem through a 2-factor physical presence verification workflow:
-1. **Visual Presence**: The attendee must physically scan the event's unique QR code using their device camera.
-2. **Geographical Presence**: The attendee's browser GPS coordinates are checked against the event venue coordinates. Only if the attendee is within the configured geofence radius (e.g. 50 meters) is their attendance recorded as `present`.
+**Flow, at a high level:**
 
----
+1. Organizer creates an event with a venue location and a geofence radius (in meters).
+2. The app generates a QR code tied to that event's ID.
+3. Attendee scans the QR with the app's built-in scanner.
+4. The browser grabs the attendee's GPS coordinates.
+5. The backend calculates the distance between attendee and venue (Haversine formula) and compares it to the radius.
+6. Within radius → marked Present. Outside → rejected, and the attendee sees why.
 
-## 🚀 Key Features
+## Features
 
-### 1. Role-Based Access Control
-- **Organizer Role**:
-  - Sign up and log in securely.
-  - Create, view, update, and delete events (ownership protected).
-  - Configure event coordinates (latitude, longitude) and geofence radius (in meters).
-  - View and download high-resolution QR codes for each event.
-  - Live real-time dashboard updating instantly as attendees check in without manual refresh.
-  - Live statistics: Total attempts, verified attendees present, and attendance rate percentage.
-  - Export attendance data as RFC 4180-compliant CSV.
-- **Attendee Role**:
-  - Sign up and log in (with optional college Registration ID).
-  - Browse upcoming campus events.
-  - Integrated in-browser camera QR code scanner.
-  - Automatic geolocation acquisition with clear status feedback (Success, Outside Geofence, Already Checked In).
-  - Database-enforced duplicate prevention (one check-in per user per event).
+**Organizers** can sign up, log in, create/edit/delete their own events, set venue coordinates and geofence radius, generate the event QR, and watch attendance come in live as people check in. They can also export the attendance list as a CSV afterward.
 
-### 2. Geofenced Validation
-- Uses the **Haversine formula** to compute great-circle distance between the user's GPS fix and the venue location.
-- Compares computed distance against the organizer's specified radius threshold.
+**Attendees** can sign up, log in, optionally add their registration ID, browse upcoming events, scan the QR with their camera, and get immediate feedback — present, outside the geofence, or already checked in.
 
-### 3. Real-Time Dashboard
-- Powered by **Socket.io** event rooms (`event:<eventId>`).
-- Check-ins trigger instant broadcasts to connected organizers without polling.
+A few things worth calling out on the implementation side:
 
----
+- **Auth** — JWT-based sessions, passwords hashed with bcrypt (cost factor 10), never stored or returned in plain text.
+- **Ownership checks** — an organizer can't edit or delete another organizer's event; this is enforced on the backend, not just hidden in the UI.
+- **Geofencing** — the actual distance check happens server-side using the Haversine formula (great-circle distance between two lat/lng points), so it can't be spoofed by messing with the frontend.
+- **No duplicate check-ins** — the Attendance collection has a compound unique index on `userId + eventId`, so the database itself rejects a second check-in attempt for the same event.
+- **Live updates** — Socket.io pushes new check-ins to the organizer's dashboard in real time (rooms scoped per event, `event:<eventId>`), so there's no need to refresh the page to see who just checked in.
 
-## 🛠 Tech Stack
+## Tech stack
 
-- **Frontend**: React 18, Vite, React Router 6, Axios, HTML5-QRCode, Socket.io-client
-- **Backend**: Node.js, Express 5, Socket.io
-- **Database**: MongoDB with Mongoose ODM
-- **Security & Auth**: JSON Web Tokens (JWT), bcrypt password hashing
-- **QR Engine**: `qrcode` (backend generation) & `html5-qrcode` (frontend camera scanner)
-- **Deployment**: Render (Backend Web Service) & Vercel (Frontend Static Host)
+**Frontend:** React + Vite, Axios, React Router, `html5-qrcode` for scanning, `socket.io-client`, browser Geolocation API.
 
----
+**Backend:** Node.js + Express, JWT (`jsonwebtoken`), bcrypt, Socket.io, `qrcode` for QR generation, dotenv for config.
 
-## 📁 Folder Structure
+**Database:** MongoDB Atlas with Mongoose as the ODM — handles the User, Event, and Attendance schemas, validation, and relationships.
 
-```text
+**Deployment:** Frontend on Vercel, backend on Render, database on MongoDB Atlas.
+
+## System architecture
+
+```
+Browser (phone/laptop)
+        │
+        ▼
+React + Vite frontend  ──(Vercel)
+        │  HTTPS / REST
+        ▼
+Node.js + Express backend  ──(Render)
+   - JWT auth
+   - Event & attendance routes
+   - QR generation
+   - Geofencing logic
+   - Socket.io
+        │  Mongoose
+        ▼
+MongoDB Atlas
+```
+
+## Project structure
+
+```
 QR-Attendance-System/
 ├── backend/
 │   ├── middleware/
-│   │   ├── auth.js               # JWT verification middleware
-│   │   └── requireOrganizer.js   # Role-checking middleware
+│   │   ├── auth.js
+│   │   └── requireOrganizer.js
 │   ├── models/
-│   │   ├── Attendance.js         # Attendance schema with unique compound index
-│   │   ├── Event.js              # Event schema with geofence settings
-│   │   └── User.js               # User schema with bcrypt-hashed passwords
+│   │   ├── Attendance.js
+│   │   ├── Event.js
+│   │   └── User.js
 │   ├── routes/
-│   │   ├── attendance.js         # Check-in, attendee list, and CSV export routes
-│   │   ├── auth.js               # Signup, login, and profile routes
-│   │   └── events.js             # Event CRUD & QR code generation routes
+│   │   ├── attendance.js
+│   │   ├── auth.js
+│   │   └── events.js
 │   ├── utils/
-│   │   ├── haversine.js          # Pure spherical distance calculation
-│   │   └── qr.js                 # QR code to data URL generator
-│   ├── db.js                     # Mongoose connection logic
-│   ├── server.js                 # Express app + HTTP server + Socket.io gateway
+│   │   ├── haversine.js
+│   │   └── qr.js
+│   ├── db.js
+│   ├── server.js
 │   ├── package.json
 │   └── .env.example
+│
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── AttendeeList.jsx  # Table with real-time Socket.io listener
-│   │   │   ├── EventForm.jsx     # Reusable create/edit event form
-│   │   │   ├── LiveStats.jsx     # Attendance metric cards
-│   │   │   ├── QRModal.jsx       # QR viewer and image download modal
-│   │   │   └── QRScanner.jsx     # In-browser camera scanner
+│   │   │   ├── AttendeeList.jsx
+│   │   │   ├── EventForm.jsx
+│   │   │   ├── LiveStats.jsx
+│   │   │   ├── QRModal.jsx
+│   │   │   └── QRScanner.jsx
 │   │   ├── context/
-│   │   │   └── AuthContext.jsx   # Global session state & persistence
+│   │   │   └── AuthContext.jsx
 │   │   ├── pages/
 │   │   │   ├── AttendeeDashboard.jsx
 │   │   │   ├── Login.jsx
 │   │   │   ├── OrganizerDashboard.jsx
 │   │   │   └── Signup.jsx
-│   │   ├── api.js                # Axios instance with auth interceptor
-│   │   ├── App.jsx               # Route definitions & role protection
-│   │   ├── index.css             # Clean, responsive styling
-│   │   └── main.jsx              # React application entry point
+│   │   ├── api.js
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
 │   ├── package.json
 │   ├── vite.config.js
-│   ├── vercel.json               # Vercel deployment configuration
+│   ├── vercel.json
 │   └── .env.example
-├── .gitignore                    # Git ignore rules (excludes .env files)
+│
+├── .gitignore
 └── README.md
 ```
 
----
+## API endpoints
 
-## 🔑 Environment Variables
-
-> **Important**: Never commit actual secrets or credentials to source control. Configure these in your local `.env` files or hosting provider settings.
-
-### Backend (`backend/.env`)
-- `PORT`: Port on which the backend server runs (e.g. `5000`)
-- `MONGODB_URI`: MongoDB connection string (local or MongoDB Atlas URI)
-- `JWT_SECRET`: High-entropy random secret key for signing JWT tokens
-- `CLIENT_URL`: URL of the frontend client for CORS and WebSocket origins (e.g. `http://localhost:5173`)
-- `LLM_API_KEY`: *(Optional bonus phase)* API key for AI feature
-- `LLM_API_URL`: *(Optional bonus phase)* LLM completions endpoint
-- `LLM_MODEL`: *(Optional bonus phase)* Model identifier
-
-### Frontend (`frontend/.env`)
-- `VITE_API_URL`: Root URL of the running backend API (e.g. `http://localhost:5000`)
-
----
-
-## 📡 API Endpoints
-
-### Authentication (`/api/auth`)
-| Method | Endpoint | Access | Description |
+**Auth**
+| Method | Endpoint | Access | Purpose |
 |---|---|---|---|
-| `POST` | `/api/auth/signup` | Public | Register new user (`name`, `email`, `password`, `role`, optional `registrationId`) |
-| `POST` | `/api/auth/login` | Public | Authenticate user; returns JWT token and user profile |
-| `GET` | `/api/auth/me` | Authenticated | Retrieve profile for currently logged-in user |
+| POST | `/api/auth/signup` | Public | Register a user |
+| POST | `/api/auth/login` | Public | Log in, get JWT |
+| GET | `/api/auth/me` | Authenticated | Get current user |
 
-### Events (`/api/events`)
-| Method | Endpoint | Access | Description |
+**Events**
+| Method | Endpoint | Access | Purpose |
 |---|---|---|---|
-| `GET` | `/api/events` | Authenticated | List events (Organizers see their own; Attendees see all upcoming) |
-| `GET` | `/api/events/:id` | Authenticated | Fetch a single event by ID |
-| `POST` | `/api/events` | Organizer | Create a new event with location and geofence radius |
-| `PUT` | `/api/events/:id` | Event Owner | Update existing event |
-| `DELETE` | `/api/events/:id` | Event Owner | Delete event |
-| `GET` | `/api/events/:id/qr` | Event Owner | Generate and return base64 Data URL of event QR code |
+| GET | `/api/events` | Authenticated | List events |
+| GET | `/api/events/:id` | Authenticated | Get event details |
+| POST | `/api/events` | Organizer | Create event |
+| PUT | `/api/events/:id` | Event owner | Update event |
+| DELETE | `/api/events/:id` | Event owner | Delete event |
+| GET | `/api/events/:id/qr` | Event owner | Generate QR |
 
-### Attendance (`/api/attendance`)
-| Method | Endpoint | Access | Description |
+**Attendance**
+| Method | Endpoint | Access | Purpose |
 |---|---|---|---|
-| `POST` | `/api/attendance/checkin` | Authenticated | Validate location against geofence and record attendance |
-| `GET` | `/api/attendance/:eventId` | Event Owner | Retrieve attendee records and live statistics |
-| `GET` | `/api/attendance/:eventId/csv` | Event Owner | Download attendance records as a `.csv` file |
+| POST | `/api/attendance/checkin` | Authenticated | Validate location & check in |
+| GET | `/api/attendance/:eventId` | Event owner | View attendance |
+| GET | `/api/attendance/:eventId/csv` | Event owner | Export attendance as CSV |
 
-### Health Check
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| `GET` | `/api/health` | Public | Check server and database status (`{ ok: true, database: "connected" }`) |
+**Health**
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/health` | Confirms backend + DB connection are up |
 
----
+## Running it locally
 
-## 🧠 Core Concepts Explained Simply
+You'll need Node.js 18+, npm, Git, and either a local MongoDB instance or a MongoDB Atlas connection string.
 
-### 1. JWT Authentication
-**Plain English**: When you log in with your email and password, the server signs a small digital "passport" called a JSON Web Token (JWT) using a secret key only the server knows. The client stores this token and sends it in the HTTP `Authorization` header with every request. The server verifies the signature without needing to query the database each time.
-
-### 2. bcrypt Password Hashing
-**Plain English**: Storing raw passwords in a database is dangerous. `bcrypt` takes the plain password, blends it with random characters (called salt), and hashes it thousands of times through a one-way mathematical function. Even if an attacker accesses the database, they cannot reverse the hash back into the password. During login, bcrypt hashes the entered password with the same salt to verify if it matches.
-
-### 3. Mongoose Models & Schemas
-**Plain English**: MongoDB is flexible and doesn't enforce strict table shapes by default. Mongoose acts as a blueprint layer (Schema) defining exact field types, default values, validations, and references (like linking an event to its organizer), turning raw documents into structured JavaScript objects.
-
-### 4. Haversine Distance Calculation
-**Plain English**: The Earth is a sphere, so straight Euclidean geometry (`distance = sqrt(dx² + dy²)`) produces massive errors on GPS coordinates. The Haversine formula uses trigonometry on a sphere of radius $R \approx 6,371\text{ km}$ to compute the true "great-circle" distance between two coordinate pairs $(\text{lat}_1, \text{lon}_1)$ and $(\text{lat}_2, \text{lon}_2)$ in meters.
-
-$$\Delta\sigma = 2 \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta\lambda}{2}\right)}\right)$$
-$$d = R \cdot \Delta\sigma$$
-
-### 5. Geofence Comparison
-**Plain English**: A geofence is an invisible circle around the venue. The organizer sets a radius (for example, $50\text{ meters}$). When an attendee checks in, the server calculates their distance from the venue using the Haversine formula. If $\text{distance} \le \text{geofenceRadius}$, the attendance is approved as `present`. Otherwise, it is marked as `rejected`.
-
-### 6. QR Generation and Validation
-**Plain English**: The organizer's server converts the event's unique MongoDB ID into a 2D matrix barcode (QR code) encoded as a base64 PNG data URL. The attendee's device camera reads the code, extracts the event ID string, and sends it along with the attendee's live GPS coordinates to the server for verification.
-
-### 7. Duplicate Attendance Prevention
-**Plain English**: To ensure an attendee cannot scan twice or check in for friends, MongoDB enforces a compound unique index on `{ userId: 1, eventId: 1 }` in the `Attendance` collection. If the database detects a second insert for the same user and event, it throws a duplicate key error (`E11000`), which the API catches and returns as an HTTP `409 Conflict`.
-
-### 8. Socket.io Real-Time Updates
-**Plain English**: Instead of the organizer refreshing the page every few seconds (polling), Socket.io opens a persistent, bidirectional WebSocket channel. Organizers join a virtual room for their event (`event:<eventId>`). Whenever an attendee checks in, the server broadcasts an `attendance:new` event exclusively to that room, immediately updating the attendee list and live stats.
-
----
-
-## 💻 Running Locally
-
-### Prerequisites
-- Node.js (v18 or higher)
-- A running MongoDB instance (Local MongoDB Community Server or free MongoDB Atlas cluster)
-
-### 1. Clone the repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/kalainesan-n/QR-Attendance-System.git
 cd QR-Attendance-System
 ```
 
-### 2. Backend Setup
+**Backend:**
 ```bash
 cd backend
 npm install
-cp .env.example .env
-```
-Edit `backend/.env` with your values:
-```env
-PORT=5000
-MONGODB_URI=mongodb://127.0.0.1:27017/qr-attendance
-JWT_SECRET=your_super_secret_random_key_here
-CLIENT_URL=http://localhost:5173
-```
-Start the backend:
-```bash
-npm run dev
-# Server running on port 5000
+# add MONGODB_URI, JWT_SECRET, CLIENT_URL to a .env file
+node server.js
+# runs on http://localhost:5000
 ```
 
-### 3. Frontend Setup
-In a separate terminal:
+**Frontend:**
 ```bash
 cd frontend
 npm install
-cp .env.example .env
-```
-Make sure `frontend/.env` contains:
-```env
-VITE_API_URL=http://localhost:5000
-```
-Start the frontend development server:
-```bash
 npm run dev
-# Local: http://localhost:5173/
+# runs on http://localhost:5173
 ```
 
-### 4. Access the Application
-Open `http://localhost:5173` in your browser.
-- Create an **Organizer** account to create events, set geofence boundaries, and project the QR code.
-- Create an **Attendee** account on your phone or browser to scan the QR code and check in.
+## Deployment
 
----
+**Backend (Render):** root directory `backend`, build command `npm install`, start command `node server.js`. Environment variables: `MONGODB_URI`, `JWT_SECRET`, `CLIENT_URL`. Render assigns the port automatically.
 
-## 🌐 Deployment Instructions
+**Frontend (Vercel):** framework Vite, root directory `frontend`, build command `npm run build`, output directory `dist`. Environment variable: `VITE_API_URL` pointing at the deployed Render backend.
 
-### Backend (Render)
-1. Create a **Web Service** on [Render.com](https://render.com).
-2. Connect your Git repository.
-3. Configure settings:
-   - **Root Directory**: `backend`
-   - **Build Command**: `npm install`
-   - **Start Command**: `node server.js`
-4. In the Render dashboard, add the Environment Variables:
-   - `MONGODB_URI`: `<Your MongoDB Atlas connection URI>`
-   - `JWT_SECRET`: `<Random 32+ character string>`
-   - `CLIENT_URL`: `<Your Vercel frontend URL, e.g. https://your-app.vercel.app>`
-   - `PORT`: `5000` (or leave default assigned by Render)
-5. Ensure your MongoDB Atlas cluster Network Access allows connections from anywhere (`0.0.0.0/0`) so Render instances can connect.
+HTTPS matters here specifically because camera and geolocation permissions in the browser generally require a secure context — this won't work reliably over plain HTTP.
 
-**Important**: The backend will automatically accept connections from any `*.vercel.app` domain for CORS and Socket.io, so you don't need to manually configure each deployment URL.
+**Never commit `.env` files, your MongoDB URI, or your JWT secret to GitHub.**
 
-### Frontend (Vercel)
-1. Create a new project on [Vercel.com](https://vercel.com).
-2. Connect your Git repository.
-3. Configure project settings:
-   - **Framework Preset**: `Vite`
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-4. In Vercel Project Settings -> Environment Variables, add:
-   - `VITE_API_URL`: `<Your deployed Render backend URL, e.g. https://your-backend.onrender.com>`
-5. Deploy.
+## What I tested
 
----
+Auth (signup/login for both roles, protected routes, password hashing), event CRUD and ownership protection, QR generation and scanning, GPS-based check-in both inside and outside the geofence, duplicate check-in rejection, CSV export, and Socket.io updates reaching the organizer dashboard live. Also did a production build and ran through the deployed version end-to-end on my phone rather than just testing on localhost.
 
-## 📸 Screenshots & Demonstrations
+## Known limitations
 
-| Organizer Dashboard | Attendee Scanner & Geolocation Feedback |
-|:---:|:---:|
-| *(Screenshot Placeholder: Organizer managing events and viewing live statistics)* | *(Screenshot Placeholder: Camera scanner reading QR and displaying check-in badge)* |
+GPS accuracy varies by device and gets worse indoors. Both camera and location permissions have to be granted by the attendee, and the app needs an active internet connection — there's no offline mode. Socket.io reconnection is fairly basic. And to be honest about the core assumption: GPS-based geofencing raises the bar against proxy attendance a lot, but it isn't a perfect anti-spoofing guarantee — a sufficiently motivated person with a fake-GPS tool could still get around it. That felt like a reasonable tradeoff for the scope of this project.
 
-| Event QR View | Live Attendee Roster |
-|:---:|:---:|
-| *(Screenshot Placeholder: QR code modal with download button)* | *(Screenshot Placeholder: Real-time table with present/rejected tags and CSV export)* |
+## What I'd add next
 
----
+Admin-level analytics, better handling of flaky network conditions, map-based venue selection when creating an event instead of typing coordinates by hand, and probably some basic anti-spoofing checks (e.g. flagging GPS accuracy that's suspiciously low).
 
-## 📄 License
-This project is developed for educational and demonstration purposes.
+## Links
 
----
-
-## 🎓 Project Status & Submission Notes
-
-This project is **submission-ready** for college/academic evaluation. All core functionality has been implemented and tested:
-
-✅ **Implemented Features:**
-- Role-based authentication (Organizer/Attendee) with JWT and bcrypt
-- Event CRUD operations with organizer ownership protection
-- QR code generation for events
-- In-browser QR code scanning with html5-qrcode
-- GPS-based geofencing using Haversine distance calculation
-- Duplicate attendance prevention at database level
-- Real-time dashboard updates via Socket.io
-- CSV export functionality
-- Responsive UI with proper error handling
-- Production-ready deployment configuration
-
-✅ **Security Measures:**
-- Passwords hashed with bcrypt (10 rounds)
-- JWT authentication with 7-day expiration
-- Protected routes with role-based authorization
-- Organizer ownership checks for all event operations
-- CORS configuration for production deployment
-- Environment variables for sensitive data (never committed)
-
-✅ **Deployment Configuration:**
-- Backend: Render-ready with proper PORT handling
-- Frontend: Vercel-ready with Vite build configuration
-- Automatic Vercel domain whitelisting for CORS
-- MongoDB Atlas connection support
-- Environment variable examples provided
-
-⚠️ **Known Limitations:**
-- Geolocation accuracy depends on device GPS capabilities
-- Desktop browsers may have less accurate GPS than mobile devices
-- Camera permissions must be granted by the user
-- Socket.io reconnection logic is basic (page refresh reconnects)
-- No offline functionality (requires active internet connection)
-
-🔧 **Technical Notes:**
-- Frontend bundle size is ~713KB (includes React, Socket.io, html5-qrcode)
-- Socket.io uses both WebSocket and polling for maximum compatibility
-- Haversine formula calculates distance in meters
-- Database uses MongoDB with Mongoose ODM
-- Compound unique index prevents duplicate attendance records
+- **GitHub:** https://github.com/kalainesan-n/QR-Attendance-System
+- **Live app:** _add your Vercel URL here_
+- **Backend health check:** _add your Render URL here_, then `/api/health`
