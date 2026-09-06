@@ -207,6 +207,7 @@ small { color: var(--muted); font-size: 12px; display: block; margin-top: 3px; }
 .checkin-rejected { border-color: #fca5a5; background: #fef2f2; color: var(--danger); }
 .checkin-duplicate { border-color: #fde68a; background: #fffbeb; color: var(--warning); }
 .checkin-error { border-color: #fde68a; background: #fffbeb; color: var(--warning); }
+.checkin-processing { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
 
 /* ── QR Image ─────────────────────────────────────────────────────────────── */
 .qr-image {
