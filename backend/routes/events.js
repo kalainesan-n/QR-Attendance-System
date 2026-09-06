@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const Event = require("../models/Event");
 const { auth } = require("../middleware/auth");
 const { requireOrganizer } = require("../middleware/requireOrganizer");
+const { eventIdToDataUrl } = require("../utils/qr");
 
 const router = express.Router();
 
@@ -72,6 +73,29 @@ router.get("/:id", auth, async (req, res) => {
   }
 });
 
+router.get("/:id/qr", auth, requireOrganizer, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid event id." });
+    }
+
+    const event = await Event.findById(req.params.id);
+    if (!event) {
+      return res.status(404).json({ message: "Event not found." });
+    }
+
+    if (!isOwner(event, req.user.id)) {
+      return res.status(403).json({ message: "You can only view QR codes for your own events." });
+    }
+
+    const dataUrl = await eventIdToDataUrl(event._id);
+    res.json({ eventId: event._id, dataUrl });
+  } catch (err) {
+    console.error("QR error:", err.message);
+    res.status(500).json({ message: "Could not generate QR code." });
+  }
+});
+
 router.post("/", auth, requireOrganizer, async (req, res) => {
   try {
     const parsed = parseEventBody(req.body);
@@ -84,7 +108,8 @@ router.post("/", auth, requireOrganizer, async (req, res) => {
       organizerId: req.user.id,
     });
 
-    res.status(201).json({ event });
+    const qrDataUrl = await eventIdToDataUrl(event._id);
+    res.status(201).json({ event, qrDataUrl });
   } catch (err) {
     console.error("Create event error:", err.message);
     res.status(500).json({ message: "Could not create event." });
