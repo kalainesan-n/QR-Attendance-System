@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 import api from "../api";
 import LiveStats from "./LiveStats";
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const SOCKET_URL = import.meta.env.VITE_API_URL || undefined;
 
 // AttendeeList fetches the attendance records for an event and shows them
 // in a table. It also connects to Socket.io to receive live updates

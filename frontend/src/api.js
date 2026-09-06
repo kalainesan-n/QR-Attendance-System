@@ -1,10 +1,11 @@
 import axios from "axios";
 
-// Base URL comes from the Vite environment variable.
-// In development: http://localhost:5000
-// In production:  set VITE_API_URL in your Vercel dashboard
+// Base URL:
+// In development: defaults to empty string so requests route through Vite's proxy.
+// This allows both localhost and LAN devices (e.g. mobile phones) to seamlessly reach the backend.
+// In production: set VITE_API_URL to your deployed backend URL.
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000",
+  baseURL: import.meta.env.VITE_API_URL || "",
 });
 
 // Automatically attach the JWT token from localStorage to every request
