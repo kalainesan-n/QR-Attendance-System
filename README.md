@@ -193,5 +193,5 @@ Admin-level analytics, better handling of flaky network conditions, map-based ve
 ## Links
 
 - **GitHub:** https://github.com/kalainesan-n/QR-Attendance-System
-- **Live app:** _add your Vercel URL here_
-- **Backend health check:** _add your Render URL here_, then `/api/health`
+- **Live app:** https://qr-attendance-system-zeta-two.vercel.app/login
+- **Backend health check:** https://qr-attendance-system-oalb.onrender.com
