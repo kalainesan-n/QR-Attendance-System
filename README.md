@@ -1,6 +1,6 @@
 # QR-Based Geo-Tagged Attendance Management System
 
-A full-stack web app that verifies attendance using QR codes and GPS geofencing, instead of a plain sign-in sheet or a roll call. Built for the NSCC technical club recruitment task (Task 2). I put together the backend, database, frontend, and deployment over about three days of pretty heads-down work.
+A full-stack web app that verifies attendance using QR codes and GPS geofencing, instead of a plain sign-in sheet or a roll call. ). I put together the backend, database, frontend, and deployment over about three days of pretty heads-down work.
 
 ## Why this exists
 
